@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Lock,
+  LockOpen,
   LogOut,
   AlertCircle,
   Eye,
@@ -8,9 +9,18 @@ import {
   Users,
   TrendingUp,
   AlertTriangle,
-  Repeat,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/hooks/use-theme";
+import { useAppointments } from "@/hooks/use-appointments";
+import {
+  SURFACE,
+  VALUE_TEXT,
+  tooltipStyles,
+  isConfirmado,
+  isEmTransicao,
+} from "@/lib/theme-classes";
 import {
   Area,
   AreaChart,
@@ -30,8 +40,6 @@ interface DirectorViewProps {
   onUnlock: (value: boolean) => void;
 }
 
-/* ── Dados locais estáveis (painel 100% nativo, sem Looker Studio) ───────── */
-
 const PROCEDURE_DATA = [
   { name: "Limpeza", value: 12 },
   { name: "Aparelho", value: 8 },
@@ -40,53 +48,26 @@ const PROCEDURE_DATA = [
   { name: "Estetica", value: 9 },
 ];
 
-const STATUS_DATA = [
-  { name: "Confirmados", value: 34, hex: "#F59E0B" },
-  { name: "Pendentes", value: 6, hex: "#334155" },
-];
-
-/* ── Tooltip supremo de altíssimo luxo (vidro fluido de elite) ──────────── */
-
-const TOOLTIP_CONTENT_STYLE = {
-  backgroundColor: "rgba(10, 10, 10, 0.75)",
-  backdropFilter: "blur(12px)",
-  border: "1px solid rgba(212, 175, 55, 0.25)",
-  borderRadius: "8px",
-  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.5)",
-  padding: "6px 10px",
-};
-
-const TOOLTIP_LABEL_STYLE = {
-  color: "#94A3B8",
-  fontSize: "11px",
-  fontWeight: "500",
-  marginBottom: "2px",
-};
-
-const TOOLTIP_ITEM_STYLE = {
-  color: "#F59E0B",
-  fontSize: "12px",
-  fontWeight: "700",
-};
-
 export function DirectorView({ unlocked, onUnlock }: DirectorViewProps) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
   const [showPin, setShowPin] = useState(false);
-  const [fading, setFading] = useState(false);
+  const [granted, setGranted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const targetPin = (import.meta.env["VITE_DIRETOR_PIN"] as string | undefined) || "2008";
   const pinLength = targetPin.length;
 
   const handleUnlock = () => {
+    if (granted) return;
     if (pin === targetPin) {
-      setFading(true);
+      setError(false);
+      setGranted(true);
+      // Congela 400ms para exibir a sequência de sucesso antes de trocar de tela.
       setTimeout(() => {
         onUnlock(true);
-        setFading(false);
+        setGranted(false);
       }, 400);
-      setError(false);
     } else {
       setError(true);
       setPin("");
@@ -95,13 +76,14 @@ export function DirectorView({ unlocked, onUnlock }: DirectorViewProps) {
     }
   };
 
+  // Validação 100% automática ao digitar o último número do código.
   useEffect(() => {
-    if (unlocked) return;
+    if (unlocked || granted) return;
     if (pinLength > 0 && pin.length >= pinLength && /^\d+$/.test(pin)) {
       handleUnlock();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pin, pinLength, unlocked]);
+  }, [pin, pinLength, unlocked, granted]);
 
   useEffect(() => {
     if (!unlocked) {
@@ -122,18 +104,20 @@ export function DirectorView({ unlocked, onUnlock }: DirectorViewProps) {
   }
 
   return (
-    <div
-      className={cn(
-        "flex min-h-screen items-center justify-center px-4 pt-16 transition-opacity duration-500",
-        fading ? "opacity-0" : "opacity-100",
-      )}
-    >
+    <div className="flex min-h-screen items-center justify-center px-4 pt-16">
       <div className="w-full max-w-md animate-fade-in-up">
-        <div className="relative overflow-hidden rounded-2xl border border-amber-500/10 bg-black/50 p-8 shadow-[0_0_15px_rgba(212,175,55,0.03)] backdrop-blur-lg">
+        <div className={cn("relative overflow-hidden p-8 rounded-2xl", SURFACE)}>
           <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-gradient-gold opacity-[0.08] blur-3xl" />
 
           <div className="relative flex flex-col items-center text-center">
-            <Lock className="h-10 w-10 text-gold" strokeWidth={1.25} />
+            {granted ? (
+              <LockOpen
+                className="h-10 w-10 animate-[mono-unlock_0.5s_ease-out] text-emerald-400"
+                strokeWidth={1.25}
+              />
+            ) : (
+              <Lock className="h-10 w-10 text-gold" strokeWidth={1.25} />
+            )}
 
             <h2 className="mt-6 font-serif text-2xl font-semibold tracking-tight text-foreground">
               Área Restrita
@@ -155,7 +139,7 @@ export function DirectorView({ unlocked, onUnlock }: DirectorViewProps) {
                   maxLength={pinLength || 8}
                   autoFocus
                   className={cn(
-                    "h-14 w-full rounded-xl border bg-black/60 px-4 pr-12 text-center text-2xl font-semibold tracking-[0.4em] text-white transition-all duration-300 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1",
+                    "h-14 w-full rounded-xl border bg-black/60 px-4 pr-12 text-center text-2xl font-semibold tracking-[0.4em] text-white transition-all duration-300 placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 light:bg-white light:text-zinc-900",
                     error
                       ? "border-rose-700/50 focus:ring-rose-700/40"
                       : "border-amber-500/15 focus:border-amber-500/40 focus:ring-amber-500/30",
@@ -183,10 +167,24 @@ export function DirectorView({ unlocked, onUnlock }: DirectorViewProps) {
 
               <button
                 onClick={handleUnlock}
-                className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-gold text-sm font-semibold text-black transition-all duration-300 hover:shadow-glow-gold active:scale-[0.98]"
+                className={cn(
+                  "mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-all duration-500 active:scale-[0.98]",
+                  granted
+                    ? "bg-emerald-600 text-white shadow-[0_0_24px_-4px_rgba(16,185,129,0.6)]"
+                    : "bg-gradient-gold text-black hover:shadow-glow-gold",
+                )}
               >
-                <Lock className="h-4 w-4" strokeWidth={1.75} />
-                Desbloquear
+                {granted ? (
+                  <>
+                    <LockOpen className="h-4 w-4" strokeWidth={1.75} />
+                    Acesso Concedido...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="h-4 w-4" strokeWidth={1.75} />
+                    Desbloquear
+                  </>
+                )}
               </button>
             </div>
 
@@ -201,8 +199,21 @@ export function DirectorView({ unlocked, onUnlock }: DirectorViewProps) {
 }
 
 function DirectorDashboard({ onLogout }: { onLogout: () => void }) {
+  const { isLight } = useTheme();
+  const { appointments } = useAppointments();
+  const tip = tooltipStyles(isLight);
+
+  const statusData = useMemo(() => {
+    const confirmados = appointments.filter((a) => isConfirmado(a.status)).length;
+    const pendentes = appointments.filter((a) => isEmTransicao(a.status)).length;
+    return [
+      { name: "Confirmados", value: confirmados, hex: "#F59E0B" },
+      { name: "Em Transição", value: pendentes, hex: isLight ? "#E2E8F0" : "#334155" },
+    ];
+  }, [appointments, isLight]);
+
   return (
-    <div className="mx-auto max-w-7xl animate-fade-in px-4 pt-28 pb-16 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl animate-in px-4 pb-16 pt-28 fade-in slide-in-from-bottom-4 duration-500 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
@@ -214,7 +225,10 @@ function DirectorDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
         <button
           onClick={onLogout}
-          className="flex items-center gap-2 rounded-full border border-gold/10 bg-black/50 px-4 py-2.5 text-sm font-medium text-muted-foreground backdrop-blur-lg transition-all duration-300 hover:border-gold/25 hover:text-foreground"
+          className={cn(
+            "flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-300 hover:text-foreground",
+            SURFACE,
+          )}
         >
           <LogOut className="h-4 w-4" strokeWidth={1.5} />
           Bloquear
@@ -227,28 +241,28 @@ function DirectorDashboard({ onLogout }: { onLogout: () => void }) {
           label="Total Agendados"
           value={40}
           accent="border-l-4 border-l-amber-500"
-          iconColor="text-amber-400"
+          iconColor="text-amber-500"
         />
         <SummaryCard
           icon={<TrendingUp className="h-5 w-5" strokeWidth={1.5} />}
           label="Taxa de Confirmação"
           value="85%"
           accent="border-l-4 border-l-emerald-600/40"
-          iconColor="text-emerald-400"
+          iconColor="text-emerald-500"
         />
         <SummaryCard
           icon={<AlertTriangle className="h-5 w-5" strokeWidth={1.5} />}
           label="Pendências de Confirmação"
           value={6}
           accent="border-l-4 border-l-rose-700/40"
-          iconColor="text-rose-400"
+          iconColor="text-rose-500"
         />
         <SummaryCard
-          icon={<Repeat className="h-5 w-5" strokeWidth={1.5} />}
+          icon={<RefreshCw className="h-5 w-5" strokeWidth={1.5} />}
           label="Campanhas de Reativação"
           value={14}
-          accent="border-l-4 border-l-slate-400/40"
-          iconColor="text-slate-300"
+          accent="border-l-4 border-l-rose-700/40"
+          iconColor="text-rose-500"
         />
       </div>
 
@@ -268,26 +282,28 @@ function DirectorDashboard({ onLogout }: { onLogout: () => void }) {
                 </defs>
                 <CartesianGrid
                   vertical={false}
-                  stroke="rgba(255,255,255,0.05)"
+                  stroke={isLight ? "rgba(15,23,42,0.06)" : "rgba(255,255,255,0.05)"}
                   strokeDasharray="3 3"
                 />
                 <XAxis
                   dataKey="name"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 11, fill: "#94A3B8" }}
+                  tick={{ fontSize: 11, fill: isLight ? "#64748B" : "#94A3B8" }}
                 />
                 <YAxis
                   tickLine={false}
                   axisLine={false}
                   allowDecimals={false}
-                  tick={{ fontSize: 11, fill: "#94A3B8" }}
+                  tick={{ fontSize: 11, fill: isLight ? "#64748B" : "#94A3B8" }}
                 />
                 <Tooltip
                   cursor={{ stroke: "rgba(212,175,55,0.2)" }}
-                  contentStyle={TOOLTIP_CONTENT_STYLE}
-                  labelStyle={TOOLTIP_LABEL_STYLE}
-                  itemStyle={TOOLTIP_ITEM_STYLE}
+                  contentStyle={tip.contentStyle}
+                  labelStyle={tip.labelStyle}
+                  itemStyle={tip.itemStyle}
+                  wrapperStyle={tip.wrapperStyle}
+                  allowEscapeViewBox={tip.allowEscapeViewBox}
                 />
                 <Area
                   type="monotone"
@@ -310,7 +326,7 @@ function DirectorDashboard({ onLogout }: { onLogout: () => void }) {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={STATUS_DATA}
+                  data={statusData}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
@@ -321,18 +337,20 @@ function DirectorDashboard({ onLogout }: { onLogout: () => void }) {
                   stroke="none"
                   animationDuration={900}
                 >
-                  {STATUS_DATA.map((entry) => (
+                  {statusData.map((entry) => (
                     <Cell key={entry.name} fill={entry.hex} />
                   ))}
                 </Pie>
                 <Tooltip
                   cursor={false}
-                  contentStyle={TOOLTIP_CONTENT_STYLE}
-                  labelStyle={TOOLTIP_LABEL_STYLE}
-                  itemStyle={TOOLTIP_ITEM_STYLE}
+                  contentStyle={tip.contentStyle}
+                  labelStyle={tip.labelStyle}
+                  itemStyle={tip.itemStyle}
+                  wrapperStyle={tip.wrapperStyle}
+                  allowEscapeViewBox={tip.allowEscapeViewBox}
                 />
                 <Legend
-                  wrapperStyle={{ fontSize: "11px", color: "#94A3B8" }}
+                  wrapperStyle={{ fontSize: "11px", color: isLight ? "#64748B" : "#94A3B8" }}
                   iconType="circle"
                   iconSize={8}
                 />
@@ -355,7 +373,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="animate-fade-in rounded-xl border border-amber-500/10 bg-black/50 p-6 shadow-[0_0_15px_rgba(212,175,55,0.03)] backdrop-blur-lg">
+    <div className={cn("animate-fade-in p-6", SURFACE)}>
       <h2 className="font-serif text-lg font-semibold text-foreground">{title}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
       {children}
@@ -379,7 +397,8 @@ function SummaryCard({
   return (
     <div
       className={cn(
-        "group relative animate-fade-in overflow-hidden rounded-xl border border-amber-500/10 bg-black/50 p-5 shadow-[0_0_15px_rgba(212,175,55,0.03)] backdrop-blur-lg transition-all duration-500 hover:border-amber-500/20",
+        "group relative animate-fade-in overflow-hidden p-5 transition-all duration-500 hover:border-amber-500/20",
+        SURFACE,
         accent,
       )}
     >
@@ -388,7 +407,7 @@ function SummaryCard({
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
             {label}
           </p>
-          <p className="mt-2 font-serif text-3xl font-semibold text-white">{value}</p>
+          <p className={cn("mt-2 font-serif text-3xl font-semibold", VALUE_TEXT)}>{value}</p>
         </div>
         <div className={cn("shrink-0", iconColor)}>{icon}</div>
       </div>
