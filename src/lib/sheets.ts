@@ -54,7 +54,7 @@ export function parseCSV(csvText: string): Appointment[] {
   const appointments: Appointment[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const cols = parseCSVLine(lines[i]);
+    const cols = parseCSVLine(lines[i] ?? "");
 
     const telefone = (cols[0] ?? "").trim();
     const nome = (cols[1] ?? "").trim();
